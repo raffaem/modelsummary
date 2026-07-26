@@ -187,6 +187,75 @@ get_gof_broom <- function(model, ...) {
 }
 
 
+# Statistics that `metrics = "common"` asks {performance} for. Only these are
+# ever dropped by `metrics_from_gof_map()`, so a whitelist entry that maps to
+# none of them -- `nobs`, IV diagnostics, anything from `gof_function()` or the
+# broom backend -- is unaffected and does not need to be recognised below.
+metrics_common <- c("AIC", "AICc", "BIC", "R2", "R2_adj", "ICC", "RMSE")
+
+# Statistic name -> the {performance} metric that produces it. Both spellings
+# are accepted: the raw name as `insight::standardize_names()` emits it, and the
+# clean label used by `modelsummary::gof_map`.
+#
+# R2 is matched by pattern rather than enumerated, because which flavour
+# `"common"` returns depends on the model class: r.squared/adj.r.squared for lm
+# and glmmTMB, r2.conditional/r2.marginal for lmer and glmer, r2.tjur for
+# logistic glm, r2.nagelkerke for Poisson glm. Every one of them comes from the
+# single "R2" metric, so a pattern keeps unfamiliar flavours working instead of
+# silently dropping the row.
+#
+# "R2" and "R2_adj" are kept distinct on purpose. Some classes return both from
+# a bare "R2" request (glmmTMB does), but others do not: for `lm`, asking only
+# for "R2" silently drops adj.r.squared from the output.
+metrics_for_statistic <- function(x) {
+  x <- as.character(x)
+  out <- rep(NA_character_, length(x))
+  out[grepl("^aicc$", x, ignore.case = TRUE)] <- "AICc"
+  out[grepl("^aic$", x, ignore.case = TRUE)] <- "AIC"
+  out[grepl("^bic$", x, ignore.case = TRUE)] <- "BIC"
+  out[grepl("^rmse$", x, ignore.case = TRUE)] <- "RMSE"
+  # mixed models add ICC to the common set
+  out[grepl("^icc$", x, ignore.case = TRUE)] <- "ICC"
+  is_r2 <- grepl("r2|r\\.squared", x, ignore.case = TRUE)
+  # adjusted flavours first: "adj.r.squared", "R2 Adj.", "r2.within.adjusted"
+  out[is.na(out) & is_r2 & grepl("adj", x, ignore.case = TRUE)] <- "R2_adj"
+  out[is.na(out) & is_r2] <- "R2"
+  out
+}
+
+#' Narrow the metrics requested from `performance` to those the table can show
+#'
+#' When the user supplies an explicit `gof_map` whitelist, `map_gof()` discards
+#' every statistic that is not on it, so computing the rest is wasted work. R2
+#' in particular dominates the cost of `model_performance()` for many model
+#' classes, and a table that does not display it should not pay for it.
+#'
+#' Falls back to `"common"` whenever the map is not a whitelist, or when no
+#' entry is recognised, so the default behaviour is unchanged. Users who need
+#' exact control can still pass `metrics` themselves, which bypasses this.
+#'
+#' @keywords internal
+#' @noRd
+metrics_from_gof_map <- function(gof_map) {
+  if (!isTRUE(attr(gof_map, "whitelist"))) {
+    return("common")
+  }
+  keys <- unlist(lapply(gof_map, function(g) c(g[["raw"]], g[["clean"]])))
+  wanted <- metrics_for_statistic(keys)
+  wanted <- intersect(metrics_common, unique(stats::na.omit(wanted)))
+  # nothing recognised: the whitelist is served from another backend, but keep
+  # the default rather than assuming no `performance` statistic is wanted
+  if (length(wanted) == 0) {
+    return("common")
+  }
+  # everything wanted: keep the keyword, since `"common"` may cover more
+  # statistics than we know about for some model classes
+  if (all(metrics_common %in% wanted)) {
+    return("common")
+  }
+  return(wanted)
+}
+
 #' Extract goodness-of-fit statistics from a single model using
 #' the `performance` package
 #'
@@ -228,7 +297,7 @@ get_gof_parameters <- function(model, ...) {
     ) {
       args[["metrics"]] <- c("RMSE", "R2", "R2_adj")
     } else {
-      args[["metrics"]] <- "common"
+      args[["metrics"]] <- metrics_from_gof_map(dots[["gof_map"]])
     }
   }
 
