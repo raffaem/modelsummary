@@ -234,11 +234,12 @@ modelsummary_rbind <- function(
   stars_note <- settings_get("stars_note")
   if (
     isTRUE(stars_note) &&
-      !isFALSE(stars) &&
-      !any(grepl("\\{stars\\}", c(estimate, statistic)))
+      (!isFALSE(stars) || any(grepl("\\{stars\\}", c(estimate, statistic))))
   ) {
     stars_note <- make_stars_note(
-      stars,
+      # a {stars} glue with stars = FALSE is rendered with the default
+      # thresholds (see format_estimates.R), so the note must state those
+      if (isFALSE(stars)) TRUE else stars,
       output_format = output_format,
       output_factory = output_factory
     )

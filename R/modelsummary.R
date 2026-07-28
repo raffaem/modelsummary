@@ -86,7 +86,7 @@ globalVariables(c(
 #' * FALSE (default): no significance stars.
 #' * TRUE: `c("+" = .1, "*" = .05, "**" = .01, "***" = 0.001)`
 #' * Named numeric vector for custom stars such as `c('*' = .1, '+' = .05)`
-#' * Note: a legend will not be inserted at the bottom of the table when the `estimate` or `statistic` arguments use "glue strings" with `{stars}`.
+#' * Note: a legend is inserted at the bottom of the table whenever `stars` is not `FALSE` *or* the `estimate`/`statistic` arguments use "glue strings" with `{stars}`; suppress it with `options(modelsummary_stars_note = FALSE)`.
 #' @param statistic vector of strings or `glue` strings which select uncertainty statistics to report vertically below the estimate (ex: standard errors, confidence intervals, p values). NULL omits all uncertainty statistics.
 #' * "conf.int", "std.error", "statistic", "p.value", "conf.low", "conf.high", or any column name produced by `get_estimates(model)`
 #' * `glue` package strings with braces, with or without R functions, such as:
@@ -881,11 +881,13 @@ modelsummary <- function(
   stars_note <- settings_get("stars_note")
   if (
     isTRUE(stars_note) &&
-      !isFALSE(stars) &&
-      !any(grepl("\\{stars\\}", c(estimate, statistic)))
+      (!isFALSE(stars) ||
+        any(grepl("\\{stars\\}", c(estimate, statistic))))
   ) {
     stars_note <- make_stars_note(
-      stars,
+      # a {stars} glue with stars = FALSE is rendered with the default
+      # thresholds (see format_estimates.R), so the note must state those
+      if (isFALSE(stars)) TRUE else stars,
       output_format = output_format,
       output_factory = output_factory
     )
