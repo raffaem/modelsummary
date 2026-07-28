@@ -87,6 +87,7 @@ globalVariables(c(
 #' * TRUE: `c("+" = .1, "*" = .05, "**" = .01, "***" = 0.001)`
 #' * Named numeric vector for custom stars such as `c('*' = .1, '+' = .05)`
 #' * Note: a legend is inserted at the bottom of the table whenever `stars` is not `FALSE` *or* the `estimate`/`statistic` arguments use "glue strings" with `{stars}`; suppress it with `options(modelsummary_stars_note = FALSE)`.
+#' * Cannot be combined with the `estimate` or `statistic` arguments: when those are customized, request stars by including `{stars}` in the glue string, which renders them with the default thresholds.
 #' @param statistic vector of strings or `glue` strings which select uncertainty statistics to report vertically below the estimate (ex: standard errors, confidence intervals, p values). NULL omits all uncertainty statistics.
 #' * "conf.int", "std.error", "statistic", "p.value", "conf.low", "conf.high", or any column name produced by `get_estimates(model)`
 #' * `glue` package strings with braces, with or without R functions, such as:
@@ -468,6 +469,27 @@ modelsummary <- function(
   }
 
   dots <- list(...)
+
+  # `stars` is redundant once `estimate` or `statistic` is customized: star
+  # placement then belongs to the glue string (`{stars}`), and the
+  # significance note follows from its presence. Reject the mix instead of
+  # guessing which specification wins. Internal calls (modelplot, the
+  # per-panel calls of modelsummary_rbind) set estimate/statistic themselves,
+  # so they are exempt via the function_called marker, which they set before
+  # delegating here.
+  if (
+    !missing(stars) &&
+      (!missing(estimate) || !missing(statistic)) &&
+      !settings_equal("function_called", c("modelplot", "modelsummary_rbind"))
+  ) {
+    stop(
+      "The `stars` argument cannot be combined with `estimate` or `statistic`. ",
+      "To display significance stars with a custom `estimate` or `statistic`, ",
+      "include {stars} in the glue string; the significance note is then ",
+      "added automatically with the default thresholds.",
+      call. = FALSE
+    )
+  }
 
   ## settings
   if (!settings_equal("function_called", "modelsummary_rbind")) {
